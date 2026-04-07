@@ -7,6 +7,7 @@
 }
 
 :root {
+  /* Colors */
   --bg: #1a1a2e;
   --bg-light: #16213e;
   --green: #00ff41;
@@ -17,6 +18,26 @@
   --text: #e0e0e0;
   --text-dim: #666680;
   --accent: #0f3460;
+
+  /* Responsive font sizes: mobile → desktop */
+  --fs-xs:  clamp(7px,  1.4vmin, 10px);
+  --fs-sm:  clamp(9px,  1.8vmin, 13px);
+  --fs-md:  clamp(12px, 2.4vmin, 18px);
+  --fs-lg:  clamp(24px, 5vmin,   40px);
+  --fs-xl:  clamp(32px, 7vmin,   56px);
+  --fs-xxl: clamp(48px, 10vmin,  80px);
+
+  /* Responsive sizes */
+  --sz-dot:    clamp(12px, 2.5vmin, 20px);
+  --sz-box-sm: clamp(100px, 22vmin, 160px);
+  --sz-box-lg: clamp(130px, 28vmin, 200px);
+  --sz-input:  clamp(200px, 50vmin, 280px);
+
+  /* Spacing */
+  --sp-xs: clamp(6px,  1.2vmin, 12px);
+  --sp-sm: clamp(10px, 2vmin,   20px);
+  --sp-md: clamp(16px, 3.5vmin, 32px);
+  --sp-lg: clamp(24px, 5vmin,   48px);
 }
 
 html, body {

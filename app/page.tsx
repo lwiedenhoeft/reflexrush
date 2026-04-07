@@ -356,13 +356,13 @@ export default function ReflexRush() {
 
   // ─── RENDER ──────────────────────────────────────────
   const renderProgressDots = () => (
-    <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginBottom: '24px' }}>
+    <div style={{ display: 'flex', gap: 'var(--sp-xs)', justifyContent: 'center', marginBottom: 'var(--sp-sm)' }}>
       {Array.from({ length: ROUNDS_PER_GAME }).map((_, i) => (
         <div
           key={i}
           style={{
-            width: '16px',
-            height: '16px',
+            width: 'var(--sz-dot)',
+            height: 'var(--sz-dot)',
             // During a red stimulus, don't highlight the current round dot (red is not a real attempt)
             background: i < results.length ? 'var(--green)' : (i === currentRound && stimulusType !== 'red') ? 'var(--gold)' : 'var(--accent)',
             boxShadow: (i === currentRound && stimulusType !== 'red') ? '0 0 8px var(--gold)' : 'none',
@@ -411,25 +411,25 @@ export default function ReflexRush() {
       {/* ─── MENU ──────────────────────────────────── */}
       {phase === 'menu' && (
         <div style={{ zIndex: 1 }}>
-          <h1 style={{ fontSize: '32px', color: 'var(--green)', marginBottom: '8px', textShadow: '0 0 20px rgba(0,255,65,0.5)' }}>
+          <h1 style={{ fontSize: 'var(--fs-xl)', color: 'var(--green)', marginBottom: 'var(--sp-xs)', textShadow: '0 0 20px rgba(0,255,65,0.5)' }}>
             REFLEX
           </h1>
-          <h1 style={{ fontSize: '32px', color: 'var(--red)', marginBottom: '40px', textShadow: '0 0 20px rgba(255,0,64,0.3)' }}>
+          <h1 style={{ fontSize: 'var(--fs-xl)', color: 'var(--red)', marginBottom: 'var(--sp-lg)', textShadow: '0 0 20px rgba(255,0,64,0.3)' }}>
             RUSH
           </h1>
 
-          <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginBottom: '32px', lineHeight: '2' }}>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', marginBottom: 'var(--sp-md)', lineHeight: '2' }}>
             <p><span style={{ color: 'var(--green)' }}>GRUEN</span> = DRUECKEN</p>
             <p><span style={{ color: 'var(--red)' }}>ROT</span> = NICHT DRUECKEN</p>
-            <p style={{ marginTop: '8px' }}>5 RUNDEN &middot; DURCHSCHNITT ZAEHLT</p>
+            <p style={{ marginTop: 'var(--sp-xs)' }}>5 RUNDEN &middot; DURCHSCHNITT ZAEHLT</p>
           </div>
 
-          <p className="pulse" style={{ fontSize: '12px', color: 'var(--gold)' }}>
+          <p className="pulse" style={{ fontSize: 'var(--fs-sm)', color: 'var(--gold)' }}>
             [ TIPPEN / LEERTASTE ]
           </p>
 
           {bestScore !== null && (
-            <p style={{ fontSize: '9px', color: 'var(--text-dim)', marginTop: '24px' }}>
+            <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', marginTop: 'var(--sp-sm)' }}>
               BEST: {bestScore}ms
             </p>
           )}
@@ -443,7 +443,7 @@ export default function ReflexRush() {
             key={countdownNum}
             className="countdown-pop"
             style={{
-              fontSize: countdownNum === 0 ? '48px' : '64px',
+              fontSize: countdownNum === 0 ? 'var(--fs-xxl)' : 'var(--fs-xxl)',
               color: countdownNum === 0 ? 'var(--green)' : 'var(--text)',
               textShadow: countdownNum === 0 ? '0 0 30px var(--green)' : 'none',
             }}
@@ -457,14 +457,14 @@ export default function ReflexRush() {
       {phase === 'waiting' && (
         <div style={{ zIndex: 1 }}>
           {renderProgressDots()}
-          <p style={{ fontSize: '14px', color: 'var(--text-dim)' }}>
+          <p style={{ fontSize: 'var(--fs-md)', color: 'var(--text-dim)' }}>
             WARTE...
           </p>
           <div
             style={{
-              width: '120px',
-              height: '120px',
-              margin: '32px auto',
+              width: 'var(--sz-box-sm)',
+              height: 'var(--sz-box-sm)',
+              margin: 'var(--sp-md) auto',
               background: 'var(--accent)',
               display: 'flex',
               alignItems: 'center',
@@ -472,9 +472,9 @@ export default function ReflexRush() {
               boxShadow: '-4px 0 0 0 var(--text-dim), 4px 0 0 0 var(--text-dim), 0 -4px 0 0 var(--text-dim), 0 4px 0 0 var(--text-dim)',
             }}
           >
-            <span style={{ fontSize: '32px', color: 'var(--text-dim)' }}>?</span>
+            <span style={{ fontSize: 'var(--fs-lg)', color: 'var(--text-dim)' }}>?</span>
           </div>
-          <p style={{ fontSize: '8px', color: 'var(--text-dim)', marginTop: '16px' }}>
+          <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', marginTop: 'var(--sp-sm)' }}>
             NICHT ZU FRUEH DRUECKEN!
           </p>
         </div>
@@ -486,9 +486,9 @@ export default function ReflexRush() {
           {renderProgressDots()}
           <div
             style={{
-              width: '160px',
-              height: '160px',
-              margin: '16px auto',
+              width: 'var(--sz-box-lg)',
+              height: 'var(--sz-box-lg)',
+              margin: 'var(--sp-sm) auto',
               background: stimulusType === 'green' ? 'var(--green)' : 'var(--red)',
               boxShadow: `0 0 40px ${stimulusType === 'green' ? 'var(--green)' : 'var(--red)'}, -4px 0 0 0 ${stimulusType === 'green' ? '#00cc33' : '#cc0033'}, 4px 0 0 0 ${stimulusType === 'green' ? '#00cc33' : '#cc0033'}, 0 -4px 0 0 ${stimulusType === 'green' ? '#00cc33' : '#cc0033'}, 0 4px 0 0 ${stimulusType === 'green' ? '#00cc33' : '#cc0033'}`,
               display: 'flex',
@@ -497,14 +497,14 @@ export default function ReflexRush() {
               transition: 'all 0.05s',
             }}
           >
-            <span style={{ fontSize: '48px', color: stimulusType === 'green' ? '#001a00' : '#1a0000' }}>
+            <span style={{ fontSize: 'var(--fs-xxl)', color: stimulusType === 'green' ? '#001a00' : '#1a0000' }}>
               {stimulusType === 'green' ? '!' : 'X'}
             </span>
           </div>
           <p style={{
-            fontSize: '14px',
+            fontSize: 'var(--fs-md)',
             color: stimulusType === 'green' ? 'var(--green)' : 'var(--red)',
-            marginTop: '20px',
+            marginTop: 'var(--sp-sm)',
             textShadow: `0 0 10px ${stimulusType === 'green' ? 'var(--green)' : 'var(--red)'}`,
           }}>
             {stimulusType === 'green' ? 'JETZT!' : 'WARTE!'}
@@ -517,21 +517,21 @@ export default function ReflexRush() {
         <div style={{ zIndex: 1 }}>
           {renderProgressDots()}
           <p style={{
-            fontSize: '48px',
+            fontSize: 'var(--fs-xxl)',
             color: reactionTime < 200 ? 'var(--gold)' : reactionTime < 300 ? 'var(--green)' : 'var(--text)',
             textShadow: reactionTime < 200 ? '0 0 20px var(--gold)' : 'none',
           }}>
             {reactionTime}
-            <span style={{ fontSize: '16px' }}>ms</span>
+            <span style={{ fontSize: 'var(--fs-sm)' }}>ms</span>
           </p>
-          <p style={{ fontSize: '9px', color: 'var(--text-dim)', marginTop: '12px' }}>
+          <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', marginTop: 'var(--sp-xs)' }}>
             {reactionTime < 150 ? 'UNMENSCHLICH!' :
               reactionTime < 200 ? 'BLITZSCHNELL!' :
                 reactionTime < 250 ? 'SCHNELL!' :
                   reactionTime < 350 ? 'SOLIDE' :
                     'LANGSAM...'}
           </p>
-          <p style={{ fontSize: '8px', color: 'var(--text-dim)', marginTop: '24px' }}>
+          <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', marginTop: 'var(--sp-sm)' }}>
             [ TIPPEN / LEERTASTE ] WEITER
           </p>
         </div>
@@ -540,25 +540,25 @@ export default function ReflexRush() {
       {/* ─── FAILED ────────────────────────────────── */}
       {phase === 'failed' && (
         <div style={{ zIndex: 1 }}>
-          <p style={{ fontSize: '24px', color: 'var(--red)', textShadow: '0 0 20px rgba(255,0,64,0.5)' }}>
+          <p style={{ fontSize: 'var(--fs-lg)', color: 'var(--red)', textShadow: '0 0 20px rgba(255,0,64,0.5)' }}>
             FEHLSCHLAG!
           </p>
           <div style={{
-            margin: '24px auto',
-            padding: '16px 24px',
+            margin: 'var(--sp-sm) auto',
+            padding: 'var(--sp-xs) var(--sp-sm)',
             background: 'rgba(255,0,64,0.1)',
-            maxWidth: '320px',
+            maxWidth: '400px',
           }}>
-            <p style={{ fontSize: '9px', color: 'var(--red)', lineHeight: '2' }}>
+            <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--red)', lineHeight: '2' }}>
               {phase === 'failed' && stimulusType === 'red'
                 ? 'BEI ROT GEDRUECKT!'
                 : 'ZU FRUEH GEDRUECKT!'}
             </p>
-            <p style={{ fontSize: '9px', color: 'var(--text-dim)', lineHeight: '2' }}>
+            <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', lineHeight: '2' }}>
               RUNDE UNGUELTIG
             </p>
           </div>
-          <p className="pulse" style={{ fontSize: '10px', color: 'var(--gold)', marginTop: '16px' }}>
+          <p className="pulse" style={{ fontSize: 'var(--fs-sm)', color: 'var(--gold)', marginTop: 'var(--sp-sm)' }}>
             [ TIPPEN / LEERTASTE ] NOCHMAL
           </p>
         </div>
@@ -567,47 +567,47 @@ export default function ReflexRush() {
       {/* ─── ROUND END ─────────────────────────────── */}
       {phase === 'roundEnd' && (
         <div style={{ zIndex: 1 }}>
-          <p style={{ fontSize: '12px', color: 'var(--text-dim)', marginBottom: '12px' }}>
+          <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-dim)', marginBottom: 'var(--sp-xs)' }}>
             ERGEBNIS
           </p>
 
           <p style={{
-            fontSize: '48px',
+            fontSize: 'var(--fs-xxl)',
             color: averageMs < 200 ? 'var(--gold)' : averageMs < 280 ? 'var(--green)' : 'var(--text)',
             textShadow: averageMs < 200 ? '0 0 20px var(--gold)' : 'none',
           }}>
             {averageMs}
-            <span style={{ fontSize: '16px' }}>ms</span>
+            <span style={{ fontSize: 'var(--fs-sm)' }}>ms</span>
           </p>
-          <p style={{ fontSize: '8px', color: 'var(--text-dim)', marginTop: '4px' }}>
+          <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', marginTop: '4px' }}>
             DURCHSCHNITT
           </p>
 
           {/* Individual times */}
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', margin: '20px 0', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 'var(--sp-xs)', justifyContent: 'center', margin: 'var(--sp-sm) 0', flexWrap: 'wrap' }}>
             {results.map((r, i) => (
-              <span key={i} style={{ fontSize: '9px', color: r.reactionMs < 200 ? 'var(--gold)' : 'var(--green)' }}>
+              <span key={i} style={{ fontSize: 'var(--fs-xs)', color: r.reactionMs < 200 ? 'var(--gold)' : 'var(--green)' }}>
                 {r.reactionMs}
               </span>
             ))}
           </div>
 
           {bestScore !== null && averageMs <= bestScore && (
-            <p style={{ fontSize: '10px', color: 'var(--gold)', marginBottom: '12px', textShadow: '0 0 10px var(--gold)' }}>
+            <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--gold)', marginBottom: 'var(--sp-xs)', textShadow: '0 0 10px var(--gold)' }}>
               NEUER REKORD!
             </p>
           )}
 
           {streakCount > 1 && (
-            <p style={{ fontSize: '8px', color: 'var(--text-dim)', marginBottom: '12px' }}>
+            <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', marginBottom: 'var(--sp-xs)' }}>
               STREAK: {streakCount}
             </p>
           )}
 
           {/* Nickname input */}
           {showNicknameInput ? (
-            <div style={{ marginTop: '16px' }}>
-              <p style={{ fontSize: '9px', color: 'var(--text-dim)', marginBottom: '12px' }}>
+            <div style={{ marginTop: 'var(--sp-sm)' }}>
+              <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', marginBottom: 'var(--sp-xs)' }}>
                 NICKNAME FUER LEADERBOARD:
               </p>
               <input
@@ -624,21 +624,21 @@ export default function ReflexRush() {
                   border: 'none',
                   color: 'var(--green)',
                   fontFamily: "'Press Start 2P', monospace",
-                  fontSize: '12px',
-                  padding: '12px 16px',
+                  fontSize: 'var(--fs-sm)',
+                  padding: 'var(--sp-xs) var(--sp-sm)',
                   textAlign: 'center',
-                  width: '240px',
+                  width: 'var(--sz-input)',
                   outline: 'none',
                   boxShadow: '-2px 0 0 0 var(--green), 2px 0 0 0 var(--green), 0 -2px 0 0 var(--green), 0 2px 0 0 var(--green)',
                 }}
                 placeholder="___"
               />
-              <p style={{ fontSize: '8px', color: 'var(--text-dim)', marginTop: '12px' }}>
+              <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', marginTop: 'var(--sp-xs)' }}>
                 [ ENTER ] ABSENDEN
               </p>
             </div>
           ) : (
-            <p className="pulse" style={{ fontSize: '10px', color: 'var(--gold)', marginTop: '20px' }}>
+            <p className="pulse" style={{ fontSize: 'var(--fs-sm)', color: 'var(--gold)', marginTop: 'var(--sp-sm)' }}>
               [ TIPPEN / LEERTASTE ] ABSENDEN
             </p>
           )}
@@ -647,17 +647,17 @@ export default function ReflexRush() {
 
       {/* ─── LEADERBOARD ───────────────────────────── */}
       {phase === 'leaderboard' && (
-        <div style={{ zIndex: 1, maxWidth: '400px', width: '100%' }}>
-          <p style={{ fontSize: '14px', color: 'var(--gold)', marginBottom: '4px' }}>
+        <div style={{ zIndex: 1, maxWidth: 'clamp(320px, 80vw, 500px)', width: '100%' }}>
+          <p style={{ fontSize: 'var(--fs-md)', color: 'var(--gold)', marginBottom: '4px' }}>
             LEADERBOARD
           </p>
-          <p style={{ fontSize: '8px', color: 'var(--text-dim)', marginBottom: '20px' }}>
+          <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', marginBottom: 'var(--sp-sm)' }}>
             DIESE WOCHE
           </p>
 
           {/* Near-miss alert */}
           {nearMissInfo && (
-            <p className="near-miss" style={{ fontSize: '10px', color: 'var(--gold)', marginBottom: '16px' }}>
+            <p className="near-miss" style={{ fontSize: 'var(--fs-sm)', color: 'var(--gold)', marginBottom: 'var(--sp-xs)' }}>
               {nearMissInfo}
             </p>
           )}
@@ -665,7 +665,7 @@ export default function ReflexRush() {
           {/* Leaderboard entries */}
           <div style={{ textAlign: 'left' }}>
             {leaderboard.length === 0 && (
-              <p style={{ fontSize: '9px', color: 'var(--text-dim)', textAlign: 'center' }}>
+              <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', textAlign: 'center' }}>
                 KEINE EINTRAEGE DIESE WOCHE
               </p>
             )}
@@ -679,26 +679,26 @@ export default function ReflexRush() {
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    padding: '8px 12px',
+                    padding: 'var(--sp-xs) var(--sp-sm)',
                     marginBottom: '4px',
                     background: isPlayer ? 'rgba(0,255,65,0.1)' : 'transparent',
                     boxShadow: isPlayer ? '-2px 0 0 0 var(--green), 2px 0 0 0 var(--green), 0 -2px 0 0 var(--green), 0 2px 0 0 var(--green)' : 'none',
                     animation: `slide-in 0.3s ease-out ${i * 0.05}s both`,
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '10px', color: rankColor, minWidth: '30px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-xs)' }}>
+                    <span style={{ fontSize: 'var(--fs-sm)', color: rankColor, minWidth: '2.5em' }}>
                       {i === 0 ? '>>>' : `#${i + 1}`}
                     </span>
                     <span style={{
-                      fontSize: '9px',
+                      fontSize: 'var(--fs-xs)',
                       color: isPlayer ? 'var(--green)' : 'var(--text)',
                     }}>
                       {entry.nickname}
                     </span>
                   </div>
                   <span style={{
-                    fontSize: '10px',
+                    fontSize: 'var(--fs-sm)',
                     color: isPlayer ? 'var(--green)' : rankColor,
                   }}>
                     {entry.average_ms}ms
@@ -709,14 +709,14 @@ export default function ReflexRush() {
           </div>
 
           {/* Player score summary */}
-          <div style={{ marginTop: '20px', padding: '12px', background: 'rgba(0,255,65,0.05)' }}>
-            <p style={{ fontSize: '9px', color: 'var(--text-dim)' }}>
+          <div style={{ marginTop: 'var(--sp-sm)', padding: 'var(--sp-xs)', background: 'rgba(0,255,65,0.05)' }}>
+            <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)' }}>
               DEIN SCORE: <span style={{ color: 'var(--green)' }}>{averageMs}ms</span>
               {playerRank && <span> &middot; PLATZ {playerRank}</span>}
             </p>
           </div>
 
-          <p className="pulse" style={{ fontSize: '10px', color: 'var(--gold)', marginTop: '20px' }}>
+          <p className="pulse" style={{ fontSize: 'var(--fs-sm)', color: 'var(--gold)', marginTop: 'var(--sp-sm)' }}>
             [ TIPPEN / LEERTASTE ] NOCHMAL
           </p>
         </div>

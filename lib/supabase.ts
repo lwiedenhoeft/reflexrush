@@ -83,3 +83,57 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
   if (error) return [];
   return data || [];
 }
+
+/** Check current rank for a nickname. Returns null if not on board. */
+export async function getCurrentRank(nickname: string): Promise<number | null> {
+  const lb = await getLeaderboard();
+  const idx = lb.findIndex(e => e.nickname === nickname);
+  return idx >= 0 ? idx + 1 : null;
+}
+
+export interface OvertakeResult {
+  /** New rank after submission */
+  newRank: number | null;
+  /** Old rank before submission (from leaderboard snapshot) */
+  oldRank: number | null;
+  /** Nickname of the player that was overtaken (rank directly above old position) */
+  overtakenNick: string | null;
+  /** Full leaderboard after submission */
+  leaderboard: LeaderboardEntry[];
+}
+
+/** Submit score and return rich overtake info */
+export async function submitScoreWithOvertake(
+  nickname: string,
+  averageMs: number
+): Promise<OvertakeResult> {
+  // Snapshot leaderboard BEFORE submission
+  const before = await getLeaderboard();
+  const oldRank = before.findIndex(e => e.nickname === nickname);
+
+  await submitScore(nickname, averageMs);
+
+  // Fetch fresh leaderboard AFTER submission
+  const after = await getLeaderboard();
+  const newIdx = after.findIndex(e => e.nickname === nickname);
+  const newRank = newIdx >= 0 ? newIdx + 1 : null;
+
+  // Who did we overtake? The player now directly above us in the new board,
+  // if they weren't there before (or we moved up past them).
+  let overtakenNick: string | null = null;
+  if (newRank !== null && newIdx > 0) {
+    const playerAbove = after[newIdx - 1];
+    // They were below us (or absent) before → we overtook them
+    const wasBeforeUs = before.findIndex(e => e.nickname === playerAbove.nickname);
+    if (oldRank === -1 || wasBeforeUs > oldRank) {
+      overtakenNick = playerAbove.nickname;
+    }
+  }
+
+  return {
+    newRank,
+    oldRank: oldRank >= 0 ? oldRank + 1 : null,
+    overtakenNick,
+    leaderboard: after,
+  };
+}

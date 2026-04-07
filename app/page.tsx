@@ -165,12 +165,15 @@ export default function ReflexRush() {
         }
       }, STIMULUS_TIMEOUT_MS);
     } else {
-      // Red: auto-advance after brief display
+      // Red: correctly ignored → show next stimulus WITHOUT counting this as a round
       timeoutTimerRef.current = setTimeout(() => {
         if (!hasRespondedRef.current) {
           hasRespondedRef.current = true;
-          // Correctly did NOT press on red
-          advanceRound();
+          setPhase('waiting');
+          const waitMs = MIN_WAIT_MS + Math.random() * (MAX_WAIT_MS - MIN_WAIT_MS);
+          waitTimerRef.current = setTimeout(() => {
+            showStimulus();
+          }, waitMs);
         }
       }, STIMULUS_TIMEOUT_MS);
     }
@@ -360,8 +363,9 @@ export default function ReflexRush() {
           style={{
             width: '16px',
             height: '16px',
-            background: i < results.length ? 'var(--green)' : i === currentRound ? 'var(--gold)' : 'var(--accent)',
-            boxShadow: i === currentRound ? '0 0 8px var(--gold)' : 'none',
+            // During a red stimulus, don't highlight the current round dot (red is not a real attempt)
+            background: i < results.length ? 'var(--green)' : (i === currentRound && stimulusType !== 'red') ? 'var(--gold)' : 'var(--accent)',
+            boxShadow: (i === currentRound && stimulusType !== 'red') ? '0 0 8px var(--gold)' : 'none',
             transition: 'all 0.2s',
           }}
         />

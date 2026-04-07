@@ -228,74 +228,84 @@ export default function ReflexRush() {
     }, 900);
   }, [clearTimers, showStimulus]);
 
-  // ─── HANDLE SPACEBAR ─────────────────────────────────
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code !== 'Space') return;
-      e.preventDefault();
+  // ─── SHARED INPUT HANDLER (Spacebar + Touch) ─────────
+  const handleInput = useCallback(() => {
+    if (showNicknameInput) return;
 
-      if (showNicknameInput) return; // Don't interfere with nickname input
+    switch (phase) {
+      case 'menu':
+      case 'leaderboard':
+        startGame();
+        break;
 
-      switch (phase) {
-        case 'menu':
-        case 'leaderboard':
-          startGame();
-          break;
+      case 'stimulus':
+        if (hasRespondedRef.current) return;
+        hasRespondedRef.current = true;
+        clearTimers();
 
-        case 'stimulus':
-          if (hasRespondedRef.current) return;
-          hasRespondedRef.current = true;
-          clearTimers();
-
-          if (stimulusType === 'red') {
-            // FAIL – pressed on red
-            audioRef.current?.fail();
-            triggerShake();
-            setStreakCount(0);
-            setPhase('failed');
-          } else {
-            // Good reaction on green
-            const rt = Math.round(performance.now() - stimulusTimeRef.current);
-            setReactionTime(rt);
-            setResults(prev => [...prev, { reactionMs: rt, stimulusType: 'green' }]);
-
-            if (rt < 200) {
-              audioRef.current?.greatReaction();
-            } else {
-              audioRef.current?.goodReaction();
-            }
-            triggerShake();
-            setPhase('result');
-          }
-          break;
-
-        case 'waiting':
-          // Pressed too early – this counts as a fail
-          clearTimers();
+        if (stimulusType === 'red') {
           audioRef.current?.fail();
           triggerShake();
           setStreakCount(0);
           setPhase('failed');
-          break;
+        } else {
+          const rt = Math.round(performance.now() - stimulusTimeRef.current);
+          setReactionTime(rt);
+          setResults(prev => [...prev, { reactionMs: rt, stimulusType: 'green' }]);
+          if (rt < 200) {
+            audioRef.current?.greatReaction();
+          } else {
+            audioRef.current?.goodReaction();
+          }
+          triggerShake();
+          setPhase('result');
+        }
+        break;
 
-        case 'result':
-          advanceRound();
-          break;
+      case 'waiting':
+        clearTimers();
+        audioRef.current?.fail();
+        triggerShake();
+        setStreakCount(0);
+        setPhase('failed');
+        break;
 
-        case 'failed':
-          startGame();
-          break;
+      case 'result':
+        advanceRound();
+        break;
 
-        case 'roundEnd':
-          setShowNicknameInput(true);
-          setTimeout(() => nicknameInputRef.current?.focus(), 100);
-          break;
-      }
+      case 'failed':
+        startGame();
+        break;
+
+      case 'roundEnd':
+        setShowNicknameInput(true);
+        setTimeout(() => nicknameInputRef.current?.focus(), 100);
+        break;
+    }
+  }, [phase, stimulusType, startGame, advanceRound, clearTimers, triggerShake, showNicknameInput]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== 'Space') return;
+      e.preventDefault();
+      handleInput();
+    };
+
+    const handleTouchStart = (e: TouchEvent) => {
+      // Ignore touches on the nickname input
+      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      e.preventDefault();
+      handleInput();
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [phase, stimulusType, startGame, advanceRound, clearTimers, triggerShake, showNicknameInput]);
+    window.addEventListener('touchstart', handleTouchStart, { passive: false });
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('touchstart', handleTouchStart);
+    };
+  }, [handleInput]);
 
   // ─── COMPUTE AVERAGE ─────────────────────────────────
   const averageMs = results.length > 0
@@ -411,7 +421,7 @@ export default function ReflexRush() {
           </div>
 
           <p className="pulse" style={{ fontSize: '12px', color: 'var(--gold)' }}>
-            [ LEERTASTE ]
+            [ TIPPEN / LEERTASTE ]
           </p>
 
           {bestScore !== null && (
@@ -518,7 +528,7 @@ export default function ReflexRush() {
                     'LANGSAM...'}
           </p>
           <p style={{ fontSize: '8px', color: 'var(--text-dim)', marginTop: '24px' }}>
-            [ LEERTASTE ] WEITER
+            [ TIPPEN / LEERTASTE ] WEITER
           </p>
         </div>
       )}
@@ -545,7 +555,7 @@ export default function ReflexRush() {
             </p>
           </div>
           <p className="pulse" style={{ fontSize: '10px', color: 'var(--gold)', marginTop: '16px' }}>
-            [ LEERTASTE ] NOCHMAL
+            [ TIPPEN / LEERTASTE ] NOCHMAL
           </p>
         </div>
       )}
@@ -625,7 +635,7 @@ export default function ReflexRush() {
             </div>
           ) : (
             <p className="pulse" style={{ fontSize: '10px', color: 'var(--gold)', marginTop: '20px' }}>
-              [ LEERTASTE ] ABSENDEN
+              [ TIPPEN / LEERTASTE ] ABSENDEN
             </p>
           )}
         </div>
@@ -703,7 +713,7 @@ export default function ReflexRush() {
           </div>
 
           <p className="pulse" style={{ fontSize: '10px', color: 'var(--gold)', marginTop: '20px' }}>
-            [ LEERTASTE ] NOCHMAL
+            [ TIPPEN / LEERTASTE ] NOCHMAL
           </p>
         </div>
       )}

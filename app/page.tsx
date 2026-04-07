@@ -2,36 +2,36 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { submitScore, getLeaderboard, type LeaderboardEntry } from '@/lib/supabase';
+import {
+  type StimulusType, type LevelConfig, type Distraction,
+  getLevelConfig, pickStimulus, getWaitTime,
+  ROUNDS_PER_LEVEL, LEVELS,
+} from '@/lib/levels';
 
 // ─── TYPES ──────────────────────────────────────────────
 type GamePhase =
   | 'menu'
   | 'countdown'
-  | 'waiting'    // waiting for stimulus
-  | 'stimulus'   // GREEN or RED shown
-  | 'result'     // single reaction result
-  | 'roundEnd'   // 5-round summary
-  | 'failed'     // pressed on red
+  | 'waiting'
+  | 'stimulus'
+  | 'result'
+  | 'levelUp'     // NEW: between levels
+  | 'roundEnd'    // after fail or voluntary submit
+  | 'failed'
   | 'leaderboard';
-
-type StimulusType = 'green' | 'red';
 
 interface RoundResult {
   reactionMs: number;
-  stimulusType: StimulusType;
+  level: number;
 }
 
-// ─── SOUND ENGINE (Web Audio API Chiptune) ──────────────
+// ─── SOUND ENGINE ───────────────────────────────────────
 class ChiptuneAudio {
   private ctx: AudioContext | null = null;
 
   private getCtx(): AudioContext {
-    if (!this.ctx) {
-      this.ctx = new AudioContext();
-    }
-    if (this.ctx.state === 'suspended') {
-      this.ctx.resume();
-    }
+    if (!this.ctx) this.ctx = new AudioContext();
+    if (this.ctx.state === 'suspended') this.ctx.resume();
     return this.ctx;
   }
 
@@ -49,13 +49,9 @@ class ChiptuneAudio {
     osc.stop(ctx.currentTime + duration);
   }
 
-  countdown() {
-    this.playTone(440, 0.15, 'square', 0.12);
-  }
-
-  countdownGo() {
-    this.playTone(880, 0.25, 'square', 0.15);
-  }
+  countdown() { this.playTone(440, 0.15, 'square', 0.12); }
+  countdownGo() { this.playTone(880, 0.25, 'square', 0.15); }
+  menuSelect() { this.playTone(600, 0.08, 'square', 0.08); }
 
   goodReaction() {
     this.playTone(660, 0.08, 'square', 0.12);
@@ -80,31 +76,30 @@ class ChiptuneAudio {
   }
 
   newRecord() {
-    const notes = [523, 659, 784, 1047];
-    notes.forEach((n, i) => {
+    [523, 659, 784, 1047].forEach((n, i) => {
       setTimeout(() => this.playTone(n, 0.15, 'square', 0.12), i * 120);
     });
   }
 
-  menuSelect() {
-    this.playTone(600, 0.08, 'square', 0.08);
+  levelUp() {
+    [440, 554, 659, 880].forEach((n, i) => {
+      setTimeout(() => this.playTone(n, 0.2, 'square', 0.15), i * 150);
+    });
   }
 }
 
 // ─── CONSTANTS ──────────────────────────────────────────
-const ROUNDS_PER_GAME = 5;
-const MIN_WAIT_MS = 1000;
-const MAX_WAIT_MS = 4000;
-const STIMULUS_TIMEOUT_MS = 1000;
-const RED_CHANCE = 0.3; // 30% chance of red stimulus
 const COUNTDOWN_SECS = 3;
 
 // ─── MAIN COMPONENT ────────────────────────────────────
 export default function ReflexRush() {
   const [phase, setPhase] = useState<GamePhase>('menu');
-  const [currentRound, setCurrentRound] = useState(0);
-  const [results, setResults] = useState<RoundResult[]>([]);
+  const [currentLevel, setCurrentLevel] = useState(1);
+  const [currentRound, setCurrentRound] = useState(0);       // rounds in current level (0–4)
+  const [totalResults, setTotalResults] = useState<RoundResult[]>([]);  // ALL results across levels
+  const [levelResults, setLevelResults] = useState<RoundResult[]>([]);  // results for current level
   const [stimulusType, setStimulusType] = useState<StimulusType>('green');
+  const [activeDistraction, setActiveDistraction] = useState<Distraction | null>(null);
   const [countdownNum, setCountdownNum] = useState(COUNTDOWN_SECS);
   const [reactionTime, setReactionTime] = useState(0);
   const [shaking, setShaking] = useState(false);
@@ -115,6 +110,7 @@ export default function ReflexRush() {
   const [showNicknameInput, setShowNicknameInput] = useState(false);
   const [bestScore, setBestScore] = useState<number | null>(null);
   const [streakCount, setStreakCount] = useState(0);
+  const [highestLevel, setHighestLevel] = useState(1);
 
   const stimulusTimeRef = useRef(0);
   const waitTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -122,16 +118,19 @@ export default function ReflexRush() {
   const audioRef = useRef<ChiptuneAudio | null>(null);
   const nicknameInputRef = useRef<HTMLInputElement>(null);
   const hasRespondedRef = useRef(false);
+  const levelConfigRef = useRef<LevelConfig>(getLevelConfig(1));
 
-  // Initialize audio
   useEffect(() => {
     audioRef.current = new ChiptuneAudio();
-    // Load saved nickname
     const saved = typeof window !== 'undefined' ? window.sessionStorage?.getItem?.('reflexrush_nick') : null;
     if (saved) setNickname(saved);
   }, []);
 
-  // ─── CLEANUP TIMERS ──────────────────────────────────
+  // Keep levelConfig in sync
+  useEffect(() => {
+    levelConfigRef.current = getLevelConfig(currentLevel);
+  }, [currentLevel]);
+
   const clearTimers = useCallback(() => {
     if (waitTimerRef.current) clearTimeout(waitTimerRef.current);
     if (timeoutTimerRef.current) clearTimeout(timeoutTimerRef.current);
@@ -139,7 +138,6 @@ export default function ReflexRush() {
     timeoutTimerRef.current = null;
   }, []);
 
-  // ─── TRIGGER SCREENSHAKE ─────────────────────────────
   const triggerShake = useCallback(() => {
     setShaking(true);
     setTimeout(() => setShaking(false), 300);
@@ -147,50 +145,57 @@ export default function ReflexRush() {
 
   // ─── SHOW STIMULUS ───────────────────────────────────
   const showStimulus = useCallback(() => {
-    const isRed = Math.random() < RED_CHANCE;
-    const type: StimulusType = isRed ? 'red' : 'green';
+    const config = levelConfigRef.current;
+    const { type, distraction } = pickStimulus(config);
+
     setStimulusType(type);
+    setActiveDistraction(distraction || null);
     setPhase('stimulus');
     stimulusTimeRef.current = performance.now();
     hasRespondedRef.current = false;
 
-    // Timeout: if green and no response, count as max time
     if (type === 'green') {
+      // Player must react within timeout
       timeoutTimerRef.current = setTimeout(() => {
         if (!hasRespondedRef.current) {
           hasRespondedRef.current = true;
-          setReactionTime(STIMULUS_TIMEOUT_MS);
-          setResults(prev => [...prev, { reactionMs: STIMULUS_TIMEOUT_MS, stimulusType: 'green' }]);
+          setReactionTime(config.timeoutMs);
+          const result = { reactionMs: config.timeoutMs, level: config.level };
+          setLevelResults(prev => [...prev, result]);
+          setTotalResults(prev => [...prev, result]);
           setPhase('result');
         }
-      }, STIMULUS_TIMEOUT_MS);
+      }, config.timeoutMs);
     } else {
-      // Red: correctly ignored → show next stimulus WITHOUT counting this as a round
+      // Red, yellow, flash → player must NOT press. Auto-advance after timeout.
       timeoutTimerRef.current = setTimeout(() => {
         if (!hasRespondedRef.current) {
           hasRespondedRef.current = true;
+          // Correctly ignored → next stimulus (doesn't count as a round)
           setPhase('waiting');
-          const waitMs = MIN_WAIT_MS + Math.random() * (MAX_WAIT_MS - MIN_WAIT_MS);
+          const waitMs = getWaitTime(config);
           waitTimerRef.current = setTimeout(() => {
             showStimulus();
           }, waitMs);
         }
-      }, STIMULUS_TIMEOUT_MS);
+      }, config.timeoutMs);
     }
   }, []);
 
   // ─── ADVANCE TO NEXT ROUND ──────────────────────────
   const advanceRound = useCallback(() => {
     clearTimers();
+    const config = levelConfigRef.current;
+
     setCurrentRound(prev => {
       const next = prev + 1;
-      if (next >= ROUNDS_PER_GAME) {
-        setPhase('roundEnd');
+      if (next >= ROUNDS_PER_LEVEL) {
+        // Level complete! Show level-up screen
+        setPhase('levelUp');
         return prev;
       }
-      // Start next stimulus after brief pause
       setPhase('waiting');
-      const waitMs = MIN_WAIT_MS + Math.random() * (MAX_WAIT_MS - MIN_WAIT_MS);
+      const waitMs = getWaitTime(config);
       waitTimerRef.current = setTimeout(() => {
         showStimulus();
       }, waitMs);
@@ -198,16 +203,46 @@ export default function ReflexRush() {
     });
   }, [clearTimers, showStimulus]);
 
+  // ─── GO TO NEXT LEVEL ────────────────────────────────
+  const goToNextLevel = useCallback(() => {
+    clearTimers();
+    const nextLevel = currentLevel + 1;
+    setCurrentLevel(nextLevel);
+    setCurrentRound(0);
+    setLevelResults([]);
+    if (nextLevel > highestLevel) setHighestLevel(nextLevel);
+    audioRef.current?.levelUp();
+
+    // Short pause then start new level with countdown-less transition
+    setPhase('waiting');
+    const config = getLevelConfig(nextLevel);
+    const waitMs = getWaitTime(config);
+    waitTimerRef.current = setTimeout(() => {
+      showStimulus();
+    }, waitMs);
+  }, [currentLevel, highestLevel, clearTimers, showStimulus]);
+
+  // ─── END RUN (submit score) ──────────────────────────
+  const endRun = useCallback(() => {
+    setShowNicknameInput(true);
+    setPhase('roundEnd');
+    setTimeout(() => nicknameInputRef.current?.focus(), 100);
+  }, []);
+
   // ─── START GAME ──────────────────────────────────────
   const startGame = useCallback(() => {
     clearTimers();
-    setResults([]);
+    setTotalResults([]);
+    setLevelResults([]);
     setCurrentRound(0);
+    setCurrentLevel(1);
     setReactionTime(0);
     setNearMissInfo(null);
     setPlayerRank(null);
+    setActiveDistraction(null);
     setPhase('countdown');
     setCountdownNum(COUNTDOWN_SECS);
+    levelConfigRef.current = getLevelConfig(1);
 
     audioRef.current?.menuSelect();
 
@@ -223,7 +258,8 @@ export default function ReflexRush() {
       } else {
         clearInterval(interval);
         setPhase('waiting');
-        const waitMs = MIN_WAIT_MS + Math.random() * (MAX_WAIT_MS - MIN_WAIT_MS);
+        const config = getLevelConfig(1);
+        const waitMs = getWaitTime(config);
         waitTimerRef.current = setTimeout(() => {
           showStimulus();
         }, waitMs);
@@ -231,7 +267,7 @@ export default function ReflexRush() {
     }, 900);
   }, [clearTimers, showStimulus]);
 
-  // ─── SHARED INPUT HANDLER (Spacebar + Touch) ─────────
+  // ─── INPUT HANDLER ───────────────────────────────────
   const handleInput = useCallback(() => {
     if (showNicknameInput) return;
 
@@ -246,7 +282,8 @@ export default function ReflexRush() {
         hasRespondedRef.current = true;
         clearTimers();
 
-        if (stimulusType === 'red') {
+        if (stimulusType !== 'green') {
+          // FAIL – pressed on non-green
           audioRef.current?.fail();
           triggerShake();
           setStreakCount(0);
@@ -254,7 +291,9 @@ export default function ReflexRush() {
         } else {
           const rt = Math.round(performance.now() - stimulusTimeRef.current);
           setReactionTime(rt);
-          setResults(prev => [...prev, { reactionMs: rt, stimulusType: 'green' }]);
+          const result = { reactionMs: rt, level: currentLevel };
+          setLevelResults(prev => [...prev, result]);
+          setTotalResults(prev => [...prev, result]);
           if (rt < 200) {
             audioRef.current?.greatReaction();
           } else {
@@ -278,7 +317,16 @@ export default function ReflexRush() {
         break;
 
       case 'failed':
-        startGame();
+        // After fail: if they had results, let them submit. Otherwise restart.
+        if (totalResults.length > 0) {
+          endRun();
+        } else {
+          startGame();
+        }
+        break;
+
+      case 'levelUp':
+        goToNextLevel();
         break;
 
       case 'roundEnd':
@@ -286,7 +334,7 @@ export default function ReflexRush() {
         setTimeout(() => nicknameInputRef.current?.focus(), 100);
         break;
     }
-  }, [phase, stimulusType, startGame, advanceRound, clearTimers, triggerShake, showNicknameInput]);
+  }, [phase, stimulusType, currentLevel, totalResults, startGame, advanceRound, clearTimers, triggerShake, showNicknameInput, goToNextLevel, endRun]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -294,14 +342,11 @@ export default function ReflexRush() {
       e.preventDefault();
       handleInput();
     };
-
     const handleTouchStart = (e: TouchEvent) => {
-      // Ignore touches on the nickname input
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
       e.preventDefault();
       handleInput();
     };
-
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('touchstart', handleTouchStart, { passive: false });
     return () => {
@@ -310,15 +355,21 @@ export default function ReflexRush() {
     };
   }, [handleInput]);
 
-  // ─── COMPUTE AVERAGE ─────────────────────────────────
-  const averageMs = results.length > 0
-    ? Math.round(results.reduce((sum, r) => sum + r.reactionMs, 0) / results.length)
+  // ─── COMPUTED VALUES ─────────────────────────────────
+  const averageMs = totalResults.length > 0
+    ? Math.round(totalResults.reduce((sum, r) => sum + r.reactionMs, 0) / totalResults.length)
     : 0;
+
+  const levelAverageMs = levelResults.length > 0
+    ? Math.round(levelResults.reduce((sum, r) => sum + r.reactionMs, 0) / levelResults.length)
+    : 0;
+
+  const levelConfig = getLevelConfig(currentLevel);
+  const nextLevelConfig = getLevelConfig(currentLevel + 1);
 
   // ─── SUBMIT SCORE ────────────────────────────────────
   const handleSubmitScore = async () => {
     if (!nickname.trim()) return;
-
     const nick = nickname.trim().toUpperCase().slice(0, 12);
     setNickname(nick);
     if (typeof window !== 'undefined') {
@@ -326,23 +377,19 @@ export default function ReflexRush() {
     }
     setShowNicknameInput(false);
 
-    // Update best score & streak
     if (bestScore === null || averageMs < bestScore) {
       setBestScore(averageMs);
       audioRef.current?.newRecord();
     }
     setStreakCount(prev => prev + 1);
 
-    // Submit to Supabase
     await submitScore(nick, averageMs);
     const lb = await getLeaderboard();
     setLeaderboard(lb);
 
-    // Find player rank
     const rank = lb.findIndex(e => e.nickname === nick);
     setPlayerRank(rank >= 0 ? rank + 1 : null);
 
-    // Near-miss detection
     if (rank > 0) {
       const diff = averageMs - lb[rank - 1].average_ms;
       if (diff <= 15 && diff > 0) {
@@ -354,22 +401,72 @@ export default function ReflexRush() {
     setPhase('leaderboard');
   };
 
-  // ─── RENDER ──────────────────────────────────────────
+  // ─── STIMULUS COLORS ─────────────────────────────────
+  const getStimulusColor = (): string => {
+    if (stimulusType === 'green') return 'var(--green)';
+    if (stimulusType === 'red') return 'var(--red)';
+    if (activeDistraction) return activeDistraction.color;
+    return 'var(--red)';
+  };
+
+  const getStimulusInnerColor = (): string => {
+    if (stimulusType === 'green') return '#001a00';
+    if (stimulusType === 'red') return '#1a0000';
+    if (activeDistraction) return activeDistraction.innerColor;
+    return '#1a0000';
+  };
+
+  const getStimulusSymbol = (): string => {
+    if (stimulusType === 'green') return '!';
+    if (stimulusType === 'red') return 'X';
+    if (activeDistraction) return activeDistraction.symbol;
+    return 'X';
+  };
+
+  const getStimulusLabel = (): string => {
+    if (stimulusType === 'green') return 'JETZT!';
+    if (stimulusType === 'red') return 'WARTE!';
+    if (activeDistraction) return activeDistraction.label;
+    return 'WARTE!';
+  };
+
+  const getStimulusBgGradient = (): string => {
+    const color = getStimulusColor();
+    if (stimulusType === 'green') return 'radial-gradient(circle, #003300 0%, #001a00 50%, var(--bg) 100%)';
+    if (stimulusType === 'red') return 'radial-gradient(circle, #330000 0%, #1a0000 50%, var(--bg) 100%)';
+    if (stimulusType === 'yellow') return 'radial-gradient(circle, #332b00 0%, #1a1500 50%, var(--bg) 100%)';
+    if (stimulusType === 'flash') return 'radial-gradient(circle, #003344 0%, #001a22 50%, var(--bg) 100%)';
+    return 'var(--bg)';
+  };
+
+  // ─── RENDER HELPERS ──────────────────────────────────
   const renderProgressDots = () => (
     <div style={{ display: 'flex', gap: 'var(--sp-xs)', justifyContent: 'center', marginBottom: 'var(--sp-sm)' }}>
-      {Array.from({ length: ROUNDS_PER_GAME }).map((_, i) => (
+      {Array.from({ length: ROUNDS_PER_LEVEL }).map((_, i) => (
         <div
           key={i}
           style={{
             width: 'var(--sz-dot)',
             height: 'var(--sz-dot)',
-            // During a red stimulus, don't highlight the current round dot (red is not a real attempt)
-            background: i < results.length ? 'var(--green)' : (i === currentRound && stimulusType !== 'red') ? 'var(--gold)' : 'var(--accent)',
-            boxShadow: (i === currentRound && stimulusType !== 'red') ? '0 0 8px var(--gold)' : 'none',
+            background: i < levelResults.length ? 'var(--green)' : (i === currentRound && stimulusType === 'green') ? 'var(--gold)' : 'var(--accent)',
+            boxShadow: (i === currentRound && stimulusType === 'green') ? '0 0 8px var(--gold)' : 'none',
             transition: 'all 0.2s',
           }}
         />
       ))}
+    </div>
+  );
+
+  const renderLevelBadge = () => (
+    <div style={{
+      position: 'absolute',
+      top: 'var(--sp-sm)',
+      left: 'var(--sp-sm)',
+      fontSize: 'var(--fs-xs)',
+      color: 'var(--text-dim)',
+      zIndex: 20,
+    }}>
+      LVL {currentLevel}
     </div>
   );
 
@@ -383,12 +480,7 @@ export default function ReflexRush() {
     textAlign: 'center',
     position: 'relative',
     overflow: 'hidden',
-    background:
-      phase === 'stimulus' && stimulusType === 'green'
-        ? 'radial-gradient(circle, #003300 0%, #001a00 50%, var(--bg) 100%)'
-        : phase === 'stimulus' && stimulusType === 'red'
-          ? 'radial-gradient(circle, #330000 0%, #1a0000 50%, var(--bg) 100%)'
-          : 'var(--bg)',
+    background: phase === 'stimulus' ? getStimulusBgGradient() : 'var(--bg)',
     transition: 'background 0.1s',
   };
 
@@ -397,16 +489,14 @@ export default function ReflexRush() {
       {/* Scanline overlay */}
       <div
         style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
+          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
           background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px)',
-          pointerEvents: 'none',
-          zIndex: 10,
+          pointerEvents: 'none', zIndex: 10,
         }}
       />
+
+      {/* Level badge during gameplay */}
+      {['waiting', 'stimulus', 'result'].includes(phase) && renderLevelBadge()}
 
       {/* ─── MENU ──────────────────────────────────── */}
       {phase === 'menu' && (
@@ -418,10 +508,10 @@ export default function ReflexRush() {
             RUSH
           </h1>
 
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', marginBottom: 'var(--sp-md)', lineHeight: '2' }}>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', marginBottom: 'var(--sp-md)', lineHeight: '2.2' }}>
             <p><span style={{ color: 'var(--green)' }}>GRUEN</span> = DRUECKEN</p>
-            <p><span style={{ color: 'var(--red)' }}>ROT</span> = NICHT DRUECKEN</p>
-            <p style={{ marginTop: 'var(--sp-xs)' }}>5 RUNDEN &middot; DURCHSCHNITT ZAEHLT</p>
+            <p><span style={{ color: 'var(--red)' }}>ALLES ANDERE</span> = NICHT DRUECKEN</p>
+            <p style={{ marginTop: 'var(--sp-xs)' }}>5 RUNDEN PRO LEVEL &middot; WERDE SCHNELLER</p>
           </div>
 
           <p className="pulse" style={{ fontSize: 'var(--fs-sm)', color: 'var(--gold)' }}>
@@ -430,7 +520,7 @@ export default function ReflexRush() {
 
           {bestScore !== null && (
             <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', marginTop: 'var(--sp-sm)' }}>
-              BEST: {bestScore}ms
+              BEST: {bestScore}ms &middot; MAX LVL {highestLevel}
             </p>
           )}
         </div>
@@ -439,11 +529,14 @@ export default function ReflexRush() {
       {/* ─── COUNTDOWN ─────────────────────────────── */}
       {phase === 'countdown' && (
         <div style={{ zIndex: 1 }}>
+          <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', marginBottom: 'var(--sp-sm)' }}>
+            LEVEL 1 &middot; {levelConfig.name}
+          </p>
           <p
             key={countdownNum}
             className="countdown-pop"
             style={{
-              fontSize: countdownNum === 0 ? 'var(--fs-xxl)' : 'var(--fs-xxl)',
+              fontSize: 'var(--fs-xxl)',
               color: countdownNum === 0 ? 'var(--green)' : 'var(--text)',
               textShadow: countdownNum === 0 ? '0 0 30px var(--green)' : 'none',
             }}
@@ -462,13 +555,9 @@ export default function ReflexRush() {
           </p>
           <div
             style={{
-              width: 'var(--sz-box-sm)',
-              height: 'var(--sz-box-sm)',
-              margin: 'var(--sp-md) auto',
-              background: 'var(--accent)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              width: 'var(--sz-box-sm)', height: 'var(--sz-box-sm)',
+              margin: 'var(--sp-md) auto', background: 'var(--accent)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
               boxShadow: '-4px 0 0 0 var(--text-dim), 4px 0 0 0 var(--text-dim), 0 -4px 0 0 var(--text-dim), 0 4px 0 0 var(--text-dim)',
             }}
           >
@@ -486,33 +575,30 @@ export default function ReflexRush() {
           {renderProgressDots()}
           <div
             style={{
-              width: 'var(--sz-box-lg)',
-              height: 'var(--sz-box-lg)',
+              width: 'var(--sz-box-lg)', height: 'var(--sz-box-lg)',
               margin: 'var(--sp-sm) auto',
-              background: stimulusType === 'green' ? 'var(--green)' : 'var(--red)',
-              boxShadow: `0 0 40px ${stimulusType === 'green' ? 'var(--green)' : 'var(--red)'}, -4px 0 0 0 ${stimulusType === 'green' ? '#00cc33' : '#cc0033'}, 4px 0 0 0 ${stimulusType === 'green' ? '#00cc33' : '#cc0033'}, 0 -4px 0 0 ${stimulusType === 'green' ? '#00cc33' : '#cc0033'}, 0 4px 0 0 ${stimulusType === 'green' ? '#00cc33' : '#cc0033'}`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              background: getStimulusColor(),
+              boxShadow: `0 0 40px ${getStimulusColor()}, -4px 0 0 0 ${getStimulusColor()}, 4px 0 0 0 ${getStimulusColor()}, 0 -4px 0 0 ${getStimulusColor()}, 0 4px 0 0 ${getStimulusColor()}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
               transition: 'all 0.05s',
             }}
           >
-            <span style={{ fontSize: 'var(--fs-xxl)', color: stimulusType === 'green' ? '#001a00' : '#1a0000' }}>
-              {stimulusType === 'green' ? '!' : 'X'}
+            <span style={{ fontSize: 'var(--fs-xxl)', color: getStimulusInnerColor() }}>
+              {getStimulusSymbol()}
             </span>
           </div>
           <p style={{
             fontSize: 'var(--fs-md)',
-            color: stimulusType === 'green' ? 'var(--green)' : 'var(--red)',
+            color: getStimulusColor(),
             marginTop: 'var(--sp-sm)',
-            textShadow: `0 0 10px ${stimulusType === 'green' ? 'var(--green)' : 'var(--red)'}`,
+            textShadow: `0 0 10px ${getStimulusColor()}`,
           }}>
-            {stimulusType === 'green' ? 'JETZT!' : 'WARTE!'}
+            {getStimulusLabel()}
           </p>
         </div>
       )}
 
-      {/* ─── RESULT (single reaction) ──────────────── */}
+      {/* ─── RESULT ────────────────────────────────── */}
       {phase === 'result' && (
         <div style={{ zIndex: 1 }}>
           {renderProgressDots()}
@@ -521,17 +607,52 @@ export default function ReflexRush() {
             color: reactionTime < 200 ? 'var(--gold)' : reactionTime < 300 ? 'var(--green)' : 'var(--text)',
             textShadow: reactionTime < 200 ? '0 0 20px var(--gold)' : 'none',
           }}>
-            {reactionTime}
-            <span style={{ fontSize: 'var(--fs-sm)' }}>ms</span>
+            {reactionTime}<span style={{ fontSize: 'var(--fs-sm)' }}>ms</span>
           </p>
           <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', marginTop: 'var(--sp-xs)' }}>
             {reactionTime < 150 ? 'UNMENSCHLICH!' :
               reactionTime < 200 ? 'BLITZSCHNELL!' :
                 reactionTime < 250 ? 'SCHNELL!' :
-                  reactionTime < 350 ? 'SOLIDE' :
-                    'LANGSAM...'}
+                  reactionTime < 350 ? 'SOLIDE' : 'LANGSAM...'}
           </p>
           <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', marginTop: 'var(--sp-sm)' }}>
+            [ TIPPEN / LEERTASTE ] WEITER
+          </p>
+        </div>
+      )}
+
+      {/* ─── LEVEL UP ──────────────────────────────── */}
+      {phase === 'levelUp' && (
+        <div style={{ zIndex: 1 }}>
+          <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', marginBottom: 'var(--sp-xs)' }}>
+            LEVEL {currentLevel} GESCHAFFT!
+          </p>
+          <p style={{ fontSize: 'var(--fs-lg)', color: 'var(--gold)', textShadow: '0 0 20px rgba(255,215,0,0.5)', marginBottom: 'var(--sp-xs)' }}>
+            {levelConfig.name}
+          </p>
+
+          <p style={{ fontSize: 'var(--fs-xxl)', color: 'var(--green)', margin: 'var(--sp-sm) 0' }}>
+            {levelAverageMs}<span style={{ fontSize: 'var(--fs-sm)' }}>ms</span>
+          </p>
+          <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)' }}>
+            LEVEL-DURCHSCHNITT
+          </p>
+
+          {/* Preview next level */}
+          <div style={{
+            margin: 'var(--sp-md) auto', padding: 'var(--sp-sm)',
+            background: 'rgba(255,215,0,0.05)', maxWidth: '400px',
+            boxShadow: '-2px 0 0 0 var(--gold), 2px 0 0 0 var(--gold), 0 -2px 0 0 var(--gold), 0 2px 0 0 var(--gold)',
+          }}>
+            <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--gold)', marginBottom: 'var(--sp-xs)' }}>
+              NAECHSTES LEVEL: {nextLevelConfig.name}
+            </p>
+            <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)' }}>
+              {nextLevelConfig.description}
+            </p>
+          </div>
+
+          <p className="pulse" style={{ fontSize: 'var(--fs-sm)', color: 'var(--gold)', marginTop: 'var(--sp-sm)' }}>
             [ TIPPEN / LEERTASTE ] WEITER
           </p>
         </div>
@@ -544,31 +665,42 @@ export default function ReflexRush() {
             FEHLSCHLAG!
           </p>
           <div style={{
-            margin: 'var(--sp-sm) auto',
-            padding: 'var(--sp-xs) var(--sp-sm)',
-            background: 'rgba(255,0,64,0.1)',
-            maxWidth: '400px',
+            margin: 'var(--sp-sm) auto', padding: 'var(--sp-xs) var(--sp-sm)',
+            background: 'rgba(255,0,64,0.1)', maxWidth: '400px',
           }}>
             <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--red)', lineHeight: '2' }}>
-              {phase === 'failed' && stimulusType === 'red'
-                ? 'BEI ROT GEDRUECKT!'
-                : 'ZU FRUEH GEDRUECKT!'}
+              {stimulusType === 'red' ? 'BEI ROT GEDRUECKT!' :
+                stimulusType === 'yellow' ? 'AUF GELB REINGEFALLEN!' :
+                  stimulusType === 'flash' ? 'AUF BLITZ REINGEFALLEN!' :
+                    'ZU FRUEH GEDRUECKT!'}
             </p>
             <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', lineHeight: '2' }}>
-              RUNDE UNGUELTIG
+              LEVEL {currentLevel} &middot; RUNDE UNGUELTIG
             </p>
           </div>
-          <p className="pulse" style={{ fontSize: 'var(--fs-sm)', color: 'var(--gold)', marginTop: 'var(--sp-sm)' }}>
-            [ TIPPEN / LEERTASTE ] NOCHMAL
-          </p>
+
+          {totalResults.length > 0 ? (
+            <div style={{ marginTop: 'var(--sp-sm)' }}>
+              <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', marginBottom: 'var(--sp-xs)' }}>
+                GESAMT: {averageMs}ms &middot; {totalResults.length} REAKTIONEN
+              </p>
+              <p className="pulse" style={{ fontSize: 'var(--fs-sm)', color: 'var(--gold)' }}>
+                [ TIPPEN / LEERTASTE ] SCORE SICHERN
+              </p>
+            </div>
+          ) : (
+            <p className="pulse" style={{ fontSize: 'var(--fs-sm)', color: 'var(--gold)', marginTop: 'var(--sp-sm)' }}>
+              [ TIPPEN / LEERTASTE ] NOCHMAL
+            </p>
+          )}
         </div>
       )}
 
-      {/* ─── ROUND END ─────────────────────────────── */}
+      {/* ─── ROUND END (score submission) ──────────── */}
       {phase === 'roundEnd' && (
         <div style={{ zIndex: 1 }}>
           <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-dim)', marginBottom: 'var(--sp-xs)' }}>
-            ERGEBNIS
+            ENDSTAND
           </p>
 
           <p style={{
@@ -576,16 +708,15 @@ export default function ReflexRush() {
             color: averageMs < 200 ? 'var(--gold)' : averageMs < 280 ? 'var(--green)' : 'var(--text)',
             textShadow: averageMs < 200 ? '0 0 20px var(--gold)' : 'none',
           }}>
-            {averageMs}
-            <span style={{ fontSize: 'var(--fs-sm)' }}>ms</span>
+            {averageMs}<span style={{ fontSize: 'var(--fs-sm)' }}>ms</span>
           </p>
           <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', marginTop: '4px' }}>
-            DURCHSCHNITT
+            DURCHSCHNITT &middot; {totalResults.length} REAKTIONEN &middot; LEVEL {currentLevel}
           </p>
 
           {/* Individual times */}
           <div style={{ display: 'flex', gap: 'var(--sp-xs)', justifyContent: 'center', margin: 'var(--sp-sm) 0', flexWrap: 'wrap' }}>
-            {results.map((r, i) => (
+            {totalResults.map((r, i) => (
               <span key={i} style={{ fontSize: 'var(--fs-xs)', color: r.reactionMs < 200 ? 'var(--gold)' : 'var(--green)' }}>
                 {r.reactionMs}
               </span>
@@ -598,14 +729,8 @@ export default function ReflexRush() {
             </p>
           )}
 
-          {streakCount > 1 && (
-            <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', marginBottom: 'var(--sp-xs)' }}>
-              STREAK: {streakCount}
-            </p>
-          )}
-
           {/* Nickname input */}
-          {showNicknameInput ? (
+          {showNicknameInput && (
             <div style={{ marginTop: 'var(--sp-sm)' }}>
               <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', marginBottom: 'var(--sp-xs)' }}>
                 NICKNAME FUER LEADERBOARD:
@@ -615,20 +740,13 @@ export default function ReflexRush() {
                 type="text"
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value.toUpperCase().slice(0, 12))}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleSubmitScore();
-                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSubmitScore(); }}
                 maxLength={12}
                 style={{
-                  background: 'var(--accent)',
-                  border: 'none',
-                  color: 'var(--green)',
-                  fontFamily: "'Press Start 2P', monospace",
-                  fontSize: 'var(--fs-sm)',
-                  padding: 'var(--sp-xs) var(--sp-sm)',
-                  textAlign: 'center',
-                  width: 'var(--sz-input)',
-                  outline: 'none',
+                  background: 'var(--accent)', border: 'none', color: 'var(--green)',
+                  fontFamily: "'Press Start 2P', monospace", fontSize: 'var(--fs-sm)',
+                  padding: 'var(--sp-xs) var(--sp-sm)', textAlign: 'center',
+                  width: 'var(--sz-input)', outline: 'none',
                   boxShadow: '-2px 0 0 0 var(--green), 2px 0 0 0 var(--green), 0 -2px 0 0 var(--green), 0 2px 0 0 var(--green)',
                 }}
                 placeholder="___"
@@ -637,10 +755,6 @@ export default function ReflexRush() {
                 [ ENTER ] ABSENDEN
               </p>
             </div>
-          ) : (
-            <p className="pulse" style={{ fontSize: 'var(--fs-sm)', color: 'var(--gold)', marginTop: 'var(--sp-sm)' }}>
-              [ TIPPEN / LEERTASTE ] ABSENDEN
-            </p>
           )}
         </div>
       )}
@@ -655,14 +769,12 @@ export default function ReflexRush() {
             DIESE WOCHE
           </p>
 
-          {/* Near-miss alert */}
           {nearMissInfo && (
             <p className="near-miss" style={{ fontSize: 'var(--fs-sm)', color: 'var(--gold)', marginBottom: 'var(--sp-xs)' }}>
               {nearMissInfo}
             </p>
           )}
 
-          {/* Leaderboard entries */}
           <div style={{ textAlign: 'left' }}>
             {leaderboard.length === 0 && (
               <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', textAlign: 'center' }}>
@@ -676,11 +788,8 @@ export default function ReflexRush() {
                 <div
                   key={entry.id}
                   style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: 'var(--sp-xs) var(--sp-sm)',
-                    marginBottom: '4px',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: 'var(--sp-xs) var(--sp-sm)', marginBottom: '4px',
                     background: isPlayer ? 'rgba(0,255,65,0.1)' : 'transparent',
                     boxShadow: isPlayer ? '-2px 0 0 0 var(--green), 2px 0 0 0 var(--green), 0 -2px 0 0 var(--green), 0 2px 0 0 var(--green)' : 'none',
                     animation: `slide-in 0.3s ease-out ${i * 0.05}s both`,
@@ -690,17 +799,11 @@ export default function ReflexRush() {
                     <span style={{ fontSize: 'var(--fs-sm)', color: rankColor, minWidth: '2.5em' }}>
                       {i === 0 ? '>>>' : `#${i + 1}`}
                     </span>
-                    <span style={{
-                      fontSize: 'var(--fs-xs)',
-                      color: isPlayer ? 'var(--green)' : 'var(--text)',
-                    }}>
+                    <span style={{ fontSize: 'var(--fs-xs)', color: isPlayer ? 'var(--green)' : 'var(--text)' }}>
                       {entry.nickname}
                     </span>
                   </div>
-                  <span style={{
-                    fontSize: 'var(--fs-sm)',
-                    color: isPlayer ? 'var(--green)' : rankColor,
-                  }}>
+                  <span style={{ fontSize: 'var(--fs-sm)', color: isPlayer ? 'var(--green)' : rankColor }}>
                     {entry.average_ms}ms
                   </span>
                 </div>
@@ -708,11 +811,11 @@ export default function ReflexRush() {
             })}
           </div>
 
-          {/* Player score summary */}
           <div style={{ marginTop: 'var(--sp-sm)', padding: 'var(--sp-xs)', background: 'rgba(0,255,65,0.05)' }}>
             <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)' }}>
               DEIN SCORE: <span style={{ color: 'var(--green)' }}>{averageMs}ms</span>
               {playerRank && <span> &middot; PLATZ {playerRank}</span>}
+              <span> &middot; LVL {currentLevel}</span>
             </p>
           </div>
 
@@ -722,15 +825,11 @@ export default function ReflexRush() {
         </div>
       )}
 
-      {/* ─── STREAK INDICATOR (always visible during game) ─── */}
+      {/* ─── STREAK + LEVEL INDICATOR ──────────────── */}
       {streakCount > 0 && (phase === 'menu' || phase === 'leaderboard') && (
         <div style={{
-          position: 'absolute',
-          top: '16px',
-          right: '16px',
-          fontSize: '8px',
-          color: 'var(--text-dim)',
-          zIndex: 20,
+          position: 'absolute', top: 'var(--sp-sm)', right: 'var(--sp-sm)',
+          fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', zIndex: 20,
         }}>
           STREAK {streakCount}
         </div>

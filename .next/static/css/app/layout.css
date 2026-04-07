@@ -1,0 +1,128 @@
+/*!*************************************************************************************************************************************************************************************************************************************************************!*\
+  !*** css ./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[14].oneOf[12].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[14].oneOf[12].use[3]!./app/globals.css ***!
+  \*************************************************************************************************************************************************************************************************************************************************************/
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #1a1a2e;
+  --bg-light: #16213e;
+  --green: #00ff41;
+  --red: #ff0040;
+  --gold: #ffd700;
+  --silver: #c0c0c0;
+  --bronze: #cd7f32;
+  --text: #e0e0e0;
+  --text-dim: #666680;
+  --accent: #0f3460;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Press Start 2P', monospace;
+  image-rendering: pixelated;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: unset;
+}
+
+/* Pixel border utility */
+.pixel-border {
+  box-shadow:
+    -4px 0 0 0 var(--text),
+    4px 0 0 0 var(--text),
+    0 -4px 0 0 var(--text),
+    0 4px 0 0 var(--text);
+}
+
+/* Screenshake animation */
+@keyframes shake {
+  0%, 100% { transform: translate(0, 0); }
+  10% { transform: translate(-6px, -4px); }
+  20% { transform: translate(6px, 2px); }
+  30% { transform: translate(-4px, 6px); }
+  40% { transform: translate(4px, -6px); }
+  50% { transform: translate(-2px, 4px); }
+  60% { transform: translate(6px, -2px); }
+  70% { transform: translate(-6px, 4px); }
+  80% { transform: translate(2px, -6px); }
+  90% { transform: translate(-4px, 2px); }
+}
+
+.shake {
+  animation: shake 0.3s ease-in-out;
+}
+
+/* Flash effect for reaction feedback */
+@keyframes flash-green {
+  0% { opacity: 1; }
+  50% { opacity: 0.6; }
+  100% { opacity: 1; }
+}
+
+@keyframes flash-red {
+  0% { background-color: var(--red); }
+  100% { background-color: var(--bg); }
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.pulse {
+  animation: pulse 0.6s ease-in-out infinite;
+}
+
+/* Pixel scanline overlay */
+@keyframes scanline {
+  0% { top: -100%; }
+  100% { top: 100%; }
+}
+
+/* Near-miss glow effect */
+@keyframes near-miss-glow {
+  0%, 100% { text-shadow: 0 0 4px var(--gold); }
+  50% { text-shadow: 0 0 16px var(--gold), 0 0 32px var(--gold); }
+}
+
+.near-miss {
+  animation: near-miss-glow 1s ease-in-out infinite;
+}
+
+/* Progress bar fill */
+@keyframes fill-bar {
+  from { width: 0%; }
+}
+
+/* Countdown animation */
+@keyframes countdown-pop {
+  0% { transform: scale(2); opacity: 0; }
+  50% { transform: scale(1); opacity: 1; }
+  90% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.8); opacity: 0; }
+}
+
+.countdown-pop {
+  animation: countdown-pop 0.9s ease-out forwards;
+}
+
+/* Leaderboard entry animation */
+@keyframes slide-in {
+  from {
+    transform: translateX(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+

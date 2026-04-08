@@ -132,6 +132,17 @@ html, body {
   animation: countdown-pop 0.9s ease-out forwards;
 }
 
+/* Telegraph charge-up — brief glow before stimulus appears */
+@keyframes telegraph-charge {
+  0%   { box-shadow: -4px 0 0 0 var(--text-dim), 4px 0 0 0 var(--text-dim), 0 -4px 0 0 var(--text-dim), 0 4px 0 0 var(--text-dim); }
+  50%  { box-shadow: -4px 0 0 0 var(--text), 4px 0 0 0 var(--text), 0 -4px 0 0 var(--text), 0 4px 0 0 var(--text), 0 0 14px rgba(255,255,255,0.25); }
+  100% { box-shadow: -4px 0 0 0 #fff, 4px 0 0 0 #fff, 0 -4px 0 0 #fff, 0 4px 0 0 #fff, 0 0 28px rgba(255,255,255,0.55); }
+}
+
+.telegraph {
+  animation: telegraph-charge 0.15s ease-in forwards;
+}
+
 /* Leaderboard entry animation */
 @keyframes slide-in {
   from {

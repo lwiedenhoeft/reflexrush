@@ -60,7 +60,14 @@ html, body {
     0 4px 0 0 var(--text);
 }
 
-/* Screenshake animation */
+/* Screenshake — three intensities */
+@keyframes shake-light {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(-2px, -1px); }
+  50% { transform: translate(2px, 1px); }
+  75% { transform: translate(-1px, 2px); }
+}
+
 @keyframes shake {
   0%, 100% { transform: translate(0, 0); }
   10% { transform: translate(-6px, -4px); }
@@ -74,8 +81,50 @@ html, body {
   90% { transform: translate(-4px, 2px); }
 }
 
-.shake {
-  animation: shake 0.3s ease-in-out;
+@keyframes shake-heavy {
+  0%, 100% { transform: translate(0, 0); }
+  8%  { transform: translate(-12px, -8px); }
+  16% { transform: translate(12px, 4px); }
+  24% { transform: translate(-8px, 12px); }
+  32% { transform: translate(8px, -12px); }
+  40% { transform: translate(-4px, 8px); }
+  48% { transform: translate(12px, -4px); }
+  56% { transform: translate(-12px, 8px); }
+  64% { transform: translate(4px, -12px); }
+  72% { transform: translate(-8px, 4px); }
+  80% { transform: translate(6px, -6px); }
+  88% { transform: translate(-4px, 2px); }
+}
+
+.shake-light { animation: shake-light 0.2s ease-in-out; }
+.shake       { animation: shake 0.3s ease-in-out; }
+.shake-heavy { animation: shake-heavy 0.35s ease-in-out; }
+
+/* Particle burst on hit */
+@keyframes particle-fly {
+  0%   { transform: translate(0, 0) scale(1); opacity: 1; }
+  100% { transform: translate(var(--px), var(--py)) scale(0); opacity: 0; }
+}
+
+.particle {
+  position: absolute;
+  width: 6px; height: 6px;
+  image-rendering: pixelated;
+  animation: particle-fly 0.45s ease-out forwards;
+}
+
+/* Combo glow overlay — scales with streak */
+@keyframes combo-glow {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 1; }
+}
+
+.combo-ring {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  animation: combo-glow 1.2s ease-in-out infinite;
 }
 
 /* Flash effect for reaction feedback */

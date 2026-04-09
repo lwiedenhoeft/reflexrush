@@ -76,7 +76,7 @@ export default function ReflexRush() {
   const [stimulusType, setStimulusType] = useState<StimulusType>('green');
   const [activeDistraction, setActiveDistraction] = useState<Distraction | null>(null);
   const [countdownNum, setCountdownNum] = useState(COUNTDOWN_SECS);
-  const [shaking, setShaking] = useState(false);
+  const [shakeClass, setShakeClass] = useState<string>('');
   const [nickname, setNickname] = useState('');
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [playerRank, setPlayerRank] = useState<number | null>(null);
@@ -93,6 +93,9 @@ export default function ReflexRush() {
   const [flashFeedback, setFlashFeedback] = useState<string | null>(null);
   // Telegraph: brief glow before stimulus appears
   const [isTelegraphing, setIsTelegraphing] = useState(false);
+  // Juiciness: combo counter + particles
+  const [comboCount, setComboCount] = useState(0);
+  const [particles, setParticles] = useState<{id: number; px: number; py: number; color: string}[]>([]);
 
   const stimulusTimeRef = useRef(0);
   const waitTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -130,8 +133,20 @@ export default function ReflexRush() {
     waitTimerRef.current = null; timeoutTimerRef.current = null;
   }, []);
 
-  const triggerShake = useCallback(() => {
-    setShaking(true); setTimeout(() => setShaking(false), 300);
+  const triggerShake = useCallback((intensity: 'light' | 'normal' | 'heavy' = 'normal') => {
+    const cls = intensity === 'heavy' ? 'shake-heavy' : intensity === 'light' ? 'shake-light' : 'shake';
+    setShakeClass(cls);
+    setTimeout(() => setShakeClass(''), intensity === 'heavy' ? 350 : intensity === 'light' ? 200 : 300);
+  }, []);
+
+  const spawnParticles = useCallback((color: string, count = 10) => {
+    const pts = Array.from({ length: count }, (_, i) => {
+      const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+      const dist = 50 + Math.random() * 60;
+      return { id: Date.now() + i, px: Math.cos(angle) * dist, py: Math.sin(angle) * dist, color };
+    });
+    setParticles(pts);
+    setTimeout(() => setParticles([]), 500);
   }, []);
 
   // ─── ADVANCE ROUND (auto, no result screen) ──────────
@@ -170,26 +185,32 @@ export default function ReflexRush() {
       stimulusTimeRef.current = performance.now();
       hasRespondedRef.current = false;
 
-    if (type === 'green') {
-      // Stimulus disappears after displayMs — player must react within that window
+      // Gold shows for half the normal window — react fast for a bonus!
+      const effectiveDisplayMs = type === 'gold'
+        ? Math.max(150, Math.floor(config.displayMs / 2))
+        : config.displayMs;
+
+    if (type === 'green' || type === 'gold') {
+      // Stimulus disappears after effectiveDisplayMs — player must react within that window
       timeoutTimerRef.current = setTimeout(() => {
         if (!hasRespondedRef.current) {
           hasRespondedRef.current = true;
+          setComboCount(0); // miss breaks the combo
           // Missed! Counts as max time for this attempt
-          const result = { reactionMs: config.displayMs, level: config.level };
+          const result = { reactionMs: effectiveDisplayMs, level: config.level };
           setLevelResults(prev => [...prev, result]);
           setTotalResults(prev => [...prev, result]);
           audioRef.current?.miss();
-          setFlashFeedback('VERPASST');
+          setFlashFeedback(type === 'gold' ? 'VERPASST ★' : 'VERPASST');
           // Auto-advance after brief feedback
           setTimeout(() => {
             setFlashFeedback(null);
             advanceRoundDirect(config);
           }, 400);
         }
-      }, config.displayMs);
+      }, effectiveDisplayMs);
     } else {
-      // Non-green: player must NOT press. Disappears after displayMs.
+      // Non-green/gold: player must NOT press. Disappears after displayMs.
       timeoutTimerRef.current = setTimeout(() => {
         if (!hasRespondedRef.current) {
           hasRespondedRef.current = true;
@@ -233,6 +254,7 @@ export default function ReflexRush() {
     setNearMissInfo(null); setPlayerRank(null);
     setActiveDistraction(null); setOvertakenNick(null);
     setRankLostAlert(null); setScoreDelta(null); setFlashFeedback(null);
+    setComboCount(0); setParticles([]);
     setPhase('countdown'); setCountdownNum(COUNTDOWN_SECS);
     levelConfigRef.current = getLevelConfig(1);
     audioRef.current?.menuSelect();
@@ -266,11 +288,12 @@ export default function ReflexRush() {
         clearTimers();
         const config = levelConfigRef.current;
 
-        if (stimulusType !== 'green') {
-          // FAIL – pressed on non-green
+        if (stimulusType !== 'green' && stimulusType !== 'gold') {
+          // FAIL – pressed on non-green/gold
           audioRef.current?.fail();
-          triggerShake();
+          triggerShake('heavy');
           setStreakCount(0);
+          setComboCount(0);
           setPhase('failed');
         } else {
           // Good reaction – record time silently, auto-advance
@@ -280,15 +303,40 @@ export default function ReflexRush() {
           const result = { reactionMs: rt, level: currentLevel };
           setLevelResults(prev => [...prev, result]);
           setTotalResults(prev => [...prev, result]);
-          if (rt < 200) audioRef.current?.greatReaction();
-          else audioRef.current?.goodReaction();
-          triggerShake();
+          setComboCount(prev => prev + 1);
+
+          // Variable audio + shake + particles based on quality
+          const isGold = stimulusType === 'gold';
+          if (isGold) {
+            audioRef.current?.greatReaction();
+            triggerShake('heavy');
+            spawnParticles('#ffd700', 14);
+          } else if (rt < 150) {
+            audioRef.current?.greatReaction();
+            triggerShake('heavy');
+            spawnParticles('#00ff41', 12);
+          } else if (rt < 200) {
+            audioRef.current?.greatReaction();
+            triggerShake('normal');
+            spawnParticles('#00ff41', 8);
+          } else if (rt < 300) {
+            audioRef.current?.goodReaction();
+            triggerShake('normal');
+            spawnParticles('#00ff41', 6);
+          } else {
+            audioRef.current?.goodReaction();
+            triggerShake('light');
+          }
+
           // Brief flash then advance (NO result screen)
-          setFlashFeedback(rt < 150 ? '!!!' : rt < 200 ? '!!' : '!');
+          const feedback = isGold
+            ? '★BONUS★'
+            : (rt < 150 ? '!!!' : rt < 200 ? '!!' : '!');
+          setFlashFeedback(feedback);
           setTimeout(() => {
             setFlashFeedback(null);
             advanceRoundDirect(config);
-          }, 250);
+          }, isGold ? 350 : 250);
         }
         break;
       }
@@ -296,8 +344,9 @@ export default function ReflexRush() {
       case 'waiting':
         clearTimers();
         audioRef.current?.fail();
-        triggerShake();
+        triggerShake('heavy');
         setStreakCount(0);
+        setComboCount(0);
         setPhase('failed');
         break;
 
@@ -315,7 +364,7 @@ export default function ReflexRush() {
         setTimeout(() => nicknameInputRef.current?.focus(), 100);
         break;
     }
-  }, [phase, stimulusType, currentLevel, totalResults, startGame, advanceRoundDirect, clearTimers, triggerShake, showNicknameInput, goToNextLevel, endRun]);
+  }, [phase, stimulusType, currentLevel, totalResults, startGame, advanceRoundDirect, clearTimers, triggerShake, spawnParticles, showNicknameInput, goToNextLevel, endRun]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => { if (e.code !== 'Space') return; e.preventDefault(); handleInput(e); };
@@ -389,13 +438,34 @@ export default function ReflexRush() {
   };
 
   // ─── STIMULUS HELPERS ────────────────────────────────
-  const getStimulusColor = () => stimulusType === 'green' ? 'var(--green)' : stimulusType === 'red' ? 'var(--red)' : activeDistraction?.color ?? 'var(--red)';
-  const getStimulusInnerColor = () => stimulusType === 'green' ? '#001a00' : stimulusType === 'red' ? '#1a0000' : activeDistraction?.innerColor ?? '#1a0000';
-  const getStimulusSymbol = () => stimulusType === 'green' ? '!' : stimulusType === 'red' ? 'X' : activeDistraction?.symbol ?? 'X';
-  const getStimulusLabel = () => stimulusType === 'green' ? 'JETZT!' : stimulusType === 'red' ? 'WARTE!' : activeDistraction?.label ?? 'WARTE!';
+  const getStimulusColor = () => {
+    if (stimulusType === 'green') return 'var(--green)';
+    if (stimulusType === 'red')   return 'var(--red)';
+    if (stimulusType === 'gold')  return 'var(--gold)';
+    return activeDistraction?.color ?? 'var(--red)';
+  };
+  const getStimulusInnerColor = () => {
+    if (stimulusType === 'green') return '#001a00';
+    if (stimulusType === 'red')   return '#1a0000';
+    if (stimulusType === 'gold')  return '#1a1200';
+    return activeDistraction?.innerColor ?? '#1a0000';
+  };
+  const getStimulusSymbol = () => {
+    if (stimulusType === 'green') return '!';
+    if (stimulusType === 'red')   return 'X';
+    if (stimulusType === 'gold')  return '★';
+    return activeDistraction?.symbol ?? 'X';
+  };
+  const getStimulusLabel = () => {
+    if (stimulusType === 'green') return 'JETZT!';
+    if (stimulusType === 'red')   return 'WARTE!';
+    if (stimulusType === 'gold')  return 'SCHNELL!';
+    return activeDistraction?.label ?? 'WARTE!';
+  };
   const getStimulusBg = () => {
     if (stimulusType === 'green') return 'radial-gradient(circle, #003300 0%, #001a00 50%, var(--bg) 100%)';
-    if (stimulusType === 'red') return 'radial-gradient(circle, #330000 0%, #1a0000 50%, var(--bg) 100%)';
+    if (stimulusType === 'red')   return 'radial-gradient(circle, #330000 0%, #1a0000 50%, var(--bg) 100%)';
+    if (stimulusType === 'gold')  return 'radial-gradient(circle, #332600 0%, #1a1200 50%, var(--bg) 100%)';
     if (stimulusType === 'yellow') return 'radial-gradient(circle, #332b00 0%, #1a1500 50%, var(--bg) 100%)';
     return 'radial-gradient(circle, #003344 0%, #001a22 50%, var(--bg) 100%)';
   };
@@ -423,23 +493,63 @@ export default function ReflexRush() {
   };
 
   return (
-    <div className={shaking ? 'shake' : ''} style={containerStyle}>
+    <div className={shakeClass} style={containerStyle}>
       {/* Scanline */}
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px)', pointerEvents: 'none', zIndex: 10 }} />
+
+      {/* Combo glow overlay — visible at 3+ consecutive hits */}
+      {comboCount >= 3 && ['waiting', 'stimulus'].includes(phase) && (
+        <div className="combo-ring" style={{
+          boxShadow: `inset 0 0 ${Math.min(comboCount * 12, 80)}px rgba(0,255,65,${Math.min(0.04 + comboCount * 0.02, 0.18)})`,
+        }} />
+      )}
+
+      {/* Particle burst from center on hit */}
+      {particles.length > 0 && (
+        <div style={{ position: 'absolute', top: '50%', left: '50%', pointerEvents: 'none', zIndex: 25 }}>
+          {particles.map(p => (
+            <div key={p.id} className="particle" style={{
+              '--px': `${p.px}px`,
+              '--py': `${p.py}px`,
+              background: p.color,
+            } as React.CSSProperties} />
+          ))}
+        </div>
+      )}
 
       {/* Level + display timer badge */}
       {['waiting', 'stimulus'].includes(phase) && (
         <div style={{ position: 'absolute', top: 'var(--sp-sm)', left: 'var(--sp-sm)', fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', zIndex: 20 }}>
-          LVL {currentLevel} &middot; {levelConfig.displayMs}ms
+          LVL {currentLevel} &middot; {stimulusType === 'gold'
+            ? <span style={{ color: 'var(--gold)' }}>{Math.max(150, Math.floor(levelConfig.displayMs / 2))}ms ★</span>
+            : `${levelConfig.displayMs}ms`}
         </div>
       )}
 
-      {/* Flash feedback overlay (brief !/!!/!!!) */}
-      {flashFeedback && (
-        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: 'var(--fs-xxl)', color: 'var(--green)', textShadow: '0 0 30px var(--green)', zIndex: 30, pointerEvents: 'none', opacity: 0.8 }}>
-          {flashFeedback}
+      {/* Combo counter — top right, visible at 3+ hits */}
+      {comboCount >= 3 && ['waiting', 'stimulus'].includes(phase) && (
+        <div style={{
+          position: 'absolute', top: 'var(--sp-sm)', right: 'var(--sp-sm)',
+          fontSize: 'var(--fs-xs)', zIndex: 20,
+          color: comboCount >= 8 ? 'var(--gold)' : comboCount >= 5 ? 'var(--green)' : 'var(--text-dim)',
+          textShadow: comboCount >= 5 ? `0 0 8px ${comboCount >= 8 ? 'var(--gold)' : 'var(--green)'}` : 'none',
+        }}>
+          COMBO x{comboCount}
         </div>
       )}
+
+      {/* Flash feedback overlay (brief !/!!/!!!/★BONUS★/VERPASST) */}
+      {flashFeedback && (() => {
+        const isBonus   = flashFeedback === '★BONUS★';
+        const isMiss    = flashFeedback.startsWith('VERPASST');
+        const color     = isBonus ? 'var(--gold)' : isMiss ? 'var(--red)' : 'var(--green)';
+        const fontSize  = isBonus ? 'var(--fs-lg)' : 'var(--fs-xxl)';
+        return (
+          <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize, color, textShadow: `0 0 30px ${color}`, zIndex: 30, pointerEvents: 'none', opacity: 0.9, whiteSpace: 'nowrap' }}>
+            {flashFeedback}
+          </div>
+        );
+      })()}
 
       {/* ─── MENU ──────────────────────────────────── */}
       {phase === 'menu' && (
@@ -558,7 +668,7 @@ export default function ReflexRush() {
           <p style={{ fontSize: 'var(--fs-lg)', color: 'var(--red)', textShadow: '0 0 20px rgba(255,0,64,0.5)' }}>FEHLSCHLAG!</p>
           <div style={{ margin: 'var(--sp-sm) auto', padding: 'var(--sp-xs) var(--sp-sm)', background: 'rgba(255,0,64,0.1)', maxWidth: '400px' }}>
             <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--red)', lineHeight: '2' }}>
-              {stimulusType === 'red' ? 'BEI ROT GEDRUECKT!' : stimulusType === 'yellow' ? 'AUF GELB REINGEFALLEN!' : stimulusType === 'flash' ? 'AUF BLITZ REINGEFALLEN!' : 'ZU FRUEH GEDRUECKT!'}
+              {stimulusType === 'red' ? 'BEI ROT GEDRUECKT!' : stimulusType === 'yellow' ? 'AUF GELB REINGEFALLEN!' : stimulusType === 'flash' ? 'AUF BLITZ REINGEFALLEN!' : stimulusType === 'gold' ? 'BEI GOLD NICHT GEDRUECKT!' : 'ZU FRUEH GEDRUECKT!'}
             </p>
             <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-dim)', lineHeight: '2' }}>LEVEL {currentLevel} &middot; ENDE</p>
           </div>

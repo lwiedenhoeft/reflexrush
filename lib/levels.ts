@@ -65,11 +65,12 @@ export const LEVELS: LevelConfig[] = [
     maxWaitMs: 3500,
     displayMs: 1000,
     redChance: 0.25,
+    goldChance: 0,
     distractions: [],
     description: 'MEHR ROT &middot; KUERZER SICHTBAR',
   },
 
-  // ── LEVEL 3: Yellow fakes ──────────────────────────────
+  // ── LEVEL 3: Yellow fakes + first gold ────────────────
   {
     level: 3,
     name: 'TAEUSCHUNG',
@@ -77,10 +78,11 @@ export const LEVELS: LevelConfig[] = [
     maxWaitMs: 3000,
     displayMs: 850,
     redChance: 0.25,
+    goldChance: 0.10,
     distractions: [
       { type: 'yellow', chance: 0.15, label: 'FALLE!', color: '#ffd700', innerColor: '#1a1500', symbol: '?' },
     ],
-    description: 'GELB = NICHT DRUECKEN',
+    description: 'GELB = NICHT DRUECKEN &middot; GOLD = BONUS',
   },
 
   // ── LEVEL 4: Speed up ─────────────────────────────────
@@ -91,6 +93,7 @@ export const LEVELS: LevelConfig[] = [
     maxWaitMs: 2500,
     displayMs: 700,
     redChance: 0.3,
+    goldChance: 0.12,
     distractions: [
       { type: 'yellow', chance: 0.15, label: 'FALLE!', color: '#ffd700', innerColor: '#1a1500', symbol: '?' },
     ],
@@ -105,6 +108,7 @@ export const LEVELS: LevelConfig[] = [
     maxWaitMs: 2200,
     displayMs: 580,
     redChance: 0.25,
+    goldChance: 0.15,
     distractions: [
       { type: 'yellow', chance: 0.12, label: 'FALLE!', color: '#ffd700', innerColor: '#1a1500', symbol: '?' },
       { type: 'flash', chance: 0.12, label: 'FAKE!', color: '#00ccff', innerColor: '#001a22', symbol: '~' },
@@ -120,6 +124,7 @@ export const LEVELS: LevelConfig[] = [
     maxWaitMs: 2000,
     displayMs: 480,
     redChance: 0.2,
+    goldChance: 0.15,
     distractions: [
       { type: 'yellow', chance: 0.15, label: 'FALLE!', color: '#ffd700', innerColor: '#1a1500', symbol: '?' },
       { type: 'flash', chance: 0.15, label: 'FAKE!', color: '#00ccff', innerColor: '#001a22', symbol: '~' },
@@ -135,6 +140,7 @@ export const LEVELS: LevelConfig[] = [
     maxWaitMs: 1800,
     displayMs: 400,
     redChance: 0.2,
+    goldChance: 0.15,
     distractions: [
       { type: 'yellow', chance: 0.18, label: 'FALLE!', color: '#ffd700', innerColor: '#1a1500', symbol: '?' },
       { type: 'flash', chance: 0.18, label: 'FAKE!', color: '#00ccff', innerColor: '#001a22', symbol: '~' },
@@ -150,6 +156,7 @@ export const LEVELS: LevelConfig[] = [
     maxWaitMs: 1500,
     displayMs: 350,
     redChance: 0.2,
+    goldChance: 0.18,
     distractions: [
       { type: 'yellow', chance: 0.2, label: 'FALLE!', color: '#ffd700', innerColor: '#1a1500', symbol: '?' },
       { type: 'flash', chance: 0.2, label: 'FAKE!', color: '#00ccff', innerColor: '#001a22', symbol: '~' },
@@ -189,6 +196,8 @@ export function pickStimulus(config: LevelConfig): { type: StimulusType; distrac
     threshold += d.chance;
     if (roll < threshold) return { type: d.type, distraction: d };
   }
+  threshold += config.goldChance;
+  if (roll < threshold) return { type: 'gold' };
   if (roll < threshold + config.redChance) return { type: 'red' };
   return { type: 'green' };
 }

@@ -12,6 +12,7 @@ import {
   saveLastRank, loadLastRank,
   saveLastScore, loadLastScore, getDelta,
 } from '@/lib/leagues';
+import { BeatEngine, getTierForLevel } from '@/lib/beat-engine';
 
 // ─── TYPES ──────────────────────────────────────────────
 type GamePhase =
@@ -96,11 +97,14 @@ export default function ReflexRush() {
   // Juiciness: combo counter + particles
   const [comboCount, setComboCount] = useState(0);
   const [particles, setParticles] = useState<{id: number; px: number; py: number; color: string}[]>([]);
+  // Beat engine
+  const [isMuted, setIsMuted] = useState(false);
 
   const stimulusTimeRef = useRef(0);
   const waitTimerRef = useRef<NodeJS.Timeout | null>(null);
   const timeoutTimerRef = useRef<NodeJS.Timeout | null>(null);
   const audioRef = useRef<ChiptuneAudio | null>(null);
+  const beatRef = useRef<BeatEngine | null>(null);
   const nicknameInputRef = useRef<HTMLInputElement>(null);
   const hasRespondedRef = useRef(false);
   const levelConfigRef = useRef<LevelConfig>(getLevelConfig(1));
@@ -108,6 +112,12 @@ export default function ReflexRush() {
   // ─── INIT ────────────────────────────────────────────
   useEffect(() => {
     audioRef.current = new ChiptuneAudio();
+    // Beat engine (lazy init — generates loops on first user gesture)
+    const beat = new BeatEngine();
+    beat.loadMuteState();
+    setIsMuted(beat.muted);
+    beatRef.current = beat;
+
     const savedNick = loadNickname();
     if (savedNick) {
       setNickname(savedNick);
@@ -123,6 +133,7 @@ export default function ReflexRush() {
     }
     const lastScore = loadLastScore();
     if (lastScore !== null) setBestLevel(lastScore);
+    return () => { beat.stop(); };
   }, []);
 
   useEffect(() => { levelConfigRef.current = getLevelConfig(currentLevel); }, [currentLevel]);
@@ -158,10 +169,14 @@ export default function ReflexRush() {
         return prev;
       }
       setPhase('waiting');
+      // Beat-quantized wait: use engine if playing, else random
+      const beat = beatRef.current;
+      const waitMs = beat?.playing
+        ? beat.getBeatQuantizedWait(config.minWaitMs, config.maxWaitMs)
+        : getWaitTime(config);
       waitTimerRef.current = setTimeout(() => {
-        // showStimulus will be called via ref
         stimulusRef.current?.();
-      }, getWaitTime(config));
+      }, waitMs);
       return next;
     });
   }, []);
@@ -216,7 +231,11 @@ export default function ReflexRush() {
           hasRespondedRef.current = true;
           // Correctly ignored → next stimulus (no round count)
           setPhase('waiting');
-          waitTimerRef.current = setTimeout(() => showStimulus(), getWaitTime(config));
+          const beat = beatRef.current;
+          const waitMs = beat?.playing
+            ? beat.getBeatQuantizedWait(config.minWaitMs, config.maxWaitMs)
+            : getWaitTime(config);
+          waitTimerRef.current = setTimeout(() => showStimulus(), waitMs);
         }
       }, config.displayMs);
     }
@@ -235,15 +254,32 @@ export default function ReflexRush() {
     setLevelResults([]);
     if (nextLevel > highestLevel) setHighestLevel(nextLevel);
     audioRef.current?.levelUp();
+    // Switch BPM tier if needed (crossfade)
+    const newTier = getTierForLevel(nextLevel);
+    beatRef.current?.switchTier(newTier);
     setPhase('waiting');
     const config = getLevelConfig(nextLevel);
-    waitTimerRef.current = setTimeout(() => showStimulus(), getWaitTime(config));
+    const beat = beatRef.current;
+    const waitMs = beat?.playing
+      ? beat.getBeatQuantizedWait(config.minWaitMs, config.maxWaitMs)
+      : getWaitTime(config);
+    waitTimerRef.current = setTimeout(() => showStimulus(), waitMs);
   }, [currentLevel, highestLevel, clearTimers, showStimulus]);
 
   const endRun = useCallback(() => {
+    beatRef.current?.stop(); // Stop music on run end
     setShowNicknameInput(true);
     setPhase('roundEnd');
     setTimeout(() => nicknameInputRef.current?.focus(), 100);
+  }, []);
+
+  /** Get a wait time — beat-quantized when engine is playing, else random */
+  const getNextWait = useCallback((config: LevelConfig): number => {
+    const beat = beatRef.current;
+    if (beat?.playing) {
+      return beat.getBeatQuantizedWait(config.minWaitMs, config.maxWaitMs);
+    }
+    return getWaitTime(config);
   }, []);
 
   // ─── START GAME ──────────────────────────────────────
@@ -259,6 +295,13 @@ export default function ReflexRush() {
     levelConfigRef.current = getLevelConfig(1);
     audioRef.current?.menuSelect();
 
+    // Init + start beat engine on first user gesture
+    const beat = beatRef.current;
+    if (beat) {
+      if (!beat.ready) beat.init();
+      beat.start(getTierForLevel(1));
+    }
+
     let count = COUNTDOWN_SECS;
     const interval = setInterval(() => {
       count--;
@@ -267,10 +310,11 @@ export default function ReflexRush() {
       else {
         clearInterval(interval);
         setPhase('waiting');
-        waitTimerRef.current = setTimeout(() => showStimulus(), getWaitTime(getLevelConfig(1)));
+        const config = getLevelConfig(1);
+        waitTimerRef.current = setTimeout(() => showStimulus(), getNextWait(config));
       }
     }, 900);
-  }, [clearTimers, showStimulus]);
+  }, [clearTimers, showStimulus, getNextWait]);
 
   // ─── INPUT HANDLER ───────────────────────────────────
   const handleInput = useCallback((event?: KeyboardEvent | TouchEvent) => {
@@ -290,6 +334,7 @@ export default function ReflexRush() {
 
         if (stimulusType !== 'green' && stimulusType !== 'gold') {
           // FAIL – pressed on non-green/gold
+          beatRef.current?.stop();
           audioRef.current?.fail();
           triggerShake('heavy');
           setStreakCount(0);
@@ -343,6 +388,7 @@ export default function ReflexRush() {
 
       case 'waiting':
         clearTimers();
+        beatRef.current?.stop();
         audioRef.current?.fail();
         triggerShake('heavy');
         setStreakCount(0);
@@ -368,7 +414,7 @@ export default function ReflexRush() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => { if (e.code !== 'Space') return; e.preventDefault(); handleInput(e); };
-    const handleTouchStart = (e: TouchEvent) => { if ((e.target as HTMLElement)?.tagName === 'INPUT') return; e.preventDefault(); handleInput(e); };
+    const handleTouchStart = (e: TouchEvent) => { const tag = (e.target as HTMLElement)?.tagName; if (tag === 'INPUT' || tag === 'BUTTON') return; e.preventDefault(); handleInput(e); };
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('touchstart', handleTouchStart, { passive: false });
     return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('touchstart', handleTouchStart); };
@@ -484,6 +530,15 @@ export default function ReflexRush() {
     </div>
   );
 
+  const handleMuteToggle = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+    const beat = beatRef.current;
+    if (beat) {
+      const nowMuted = beat.toggleMute();
+      setIsMuted(nowMuted);
+    }
+  }, []);
+
   const containerStyle: React.CSSProperties = {
     display: 'flex', flexDirection: 'column', alignItems: 'center',
     justifyContent: 'center', height: '100vh', padding: '24px',
@@ -496,6 +551,20 @@ export default function ReflexRush() {
     <div className={shakeClass} style={containerStyle}>
       {/* Scanline */}
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px)', pointerEvents: 'none', zIndex: 10 }} />
+
+      {/* Mute toggle — always visible, bottom right */}
+      <button
+        onClick={handleMuteToggle}
+        onTouchStart={handleMuteToggle}
+        style={{
+          position: 'absolute', bottom: 'var(--sp-sm)', right: 'var(--sp-sm)',
+          zIndex: 20, background: 'none', border: 'none', cursor: 'pointer',
+          fontSize: 'var(--fs-sm)', color: 'var(--text-dim)', padding: 'var(--sp-xs)',
+          fontFamily: "'Press Start 2P', monospace",
+        }}
+      >
+        {isMuted ? 'MUTE' : 'SND'}
+      </button>
 
       {/* Combo glow overlay — visible at 3+ consecutive hits */}
       {comboCount >= 3 && ['waiting', 'stimulus'].includes(phase) && (
